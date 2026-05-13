@@ -1,13 +1,26 @@
 ---
 name: cascade-tailscale-overview
-description: Карта применения Tailscale в проекте Cascade и подсказка по выбору вложенного skill'а (funnel/serve/acl/add-node/troubleshooting). Активируется при любом вопросе или задаче про Tailscale в контексте Cascade — настройка ноды, экспозиция MCP, диагностика сетевых проблем, правки ACL, добавление нового peer.
+description: Карта применения Tailscale в проекте Cascade и подсказка по выбору вложенного skill'а (funnel/serve/acl/add-node/troubleshooting/hygiene/hard-rules). Активируется при любом вопросе или задаче про Tailscale в контексте Cascade — настройка ноды, экспозиция MCP, диагностика сетевых проблем, правки ACL, добавление нового peer, regular cleanup.
 ---
 
 # Cascade × Tailscale — обзор
 
+_Версия 1.1 от 2026-05-14 (с учётом compliance audit и architecture-errors review)._
+
 ## Когда применять
 
 Любая работа с Tailscale в контексте Cascade VPN / Tier 2 / cascade-browser / cascade-state / cascade-out. Если запрос не про Tailscale — этот skill не нужен.
+
+## Source of truth для tailnet inventory
+
+| Уровень | Источник | Что в нём |
+|---|---|---|
+| Canonical (живой) | **admin.tailscale.com → Machines** | Текущее состояние tailnet (32 устройств), tags, online/offline, key expiry |
+| Generated mirror | **`state/tailscale-tailnet.md`** | Дамп админки через cascade-browser MCP (`browser_read_active_tab`); regen вручную, см. [[cascade-tailscale-hygiene]] |
+| Roles + descriptions | **`state/nodes.md`** | Что делает каждая нода, recovery channels, SSH host-keys |
+| Skill overview (этот файл) | Core fleet only (12 из 32) | Pattern reference, НЕ полный inventory |
+
+⚠️ **Этот SKILL.md покрывает 12 core nodes**, остальные 20 (Android, iOS, orphan, mobile, offline) — в `state/tailscale-tailnet.md`. Не считай этот документ исчерпывающим inventory.
 
 ## Какой sub-skill вызывать
 
@@ -19,6 +32,7 @@ description: Карта применения Tailscale в проекте Cascade
 | "Добавить новую ноду", "SER10", "tailscale up", "OAuth join" | [[cascade-tailscale-add-node]] | Шаги добавления (PowerShell+WSL), флаги, MagicDNS, регистрация в admin |
 | "421 Invalid Host", "cert not provisioned", "MagicDNS не резолвит", "tailscale.exe из WSL" | [[cascade-tailscale-troubleshooting]] | Типичные ошибки + диагностика |
 | Хочешь предотвратить новые ошибки в скриптах автоматизации | [[cascade-tailscale-hard-rules]] | АБСОЛЮТНЫЕ правила (--ssh=false, gl-mt6000-* not-touch) |
+| Quarterly cleanup, identify orphan nodes, regen tailscale-tailnet.md, Bearer rotation | [[cascade-tailscale-hygiene]] | Регулярная гигиена: cleanup offline >90d, audit unknown peers, doc drift fix |
 
 ## Cascade fleet × Tailscale на 2026-05-14
 

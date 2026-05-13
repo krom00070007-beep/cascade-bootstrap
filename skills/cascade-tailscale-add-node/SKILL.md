@@ -35,17 +35,37 @@ winget install --id=tailscale.tailscale -e --silent --accept-package-agreements
 msiexec /i https://tailscale.com/download/windows ALLUSERS=1 /qn
 ```
 
-### 2. tailscale up с правильными флагами
+### 2. ⚠️ Prereq: tagOwners в admin (если хочешь advertise tag)
 
-📋 PowerShell **admin**:
+`--advertise-tags=tag:cascade-X` сработает ТОЛЬКО если этот tag уже определён в `tagOwners` policy file (admin.tailscale.com → Access controls). Иначе `tailscale up` упадёт с ошибкой `the device user is not in tagOwners`.
+
+На 2026-05-14 в tagOwners есть только `tag:vpn-bridge`. Cascade-* tags не определены — см. [[cascade-tailscale-acl]] для добавления.
+
+**Workflow:**
+1. Open admin → Access controls → Edit
+2. Add `tag:cascade-primary` (или нужный) в `tagOwners` с owner `krom00070007@gmail.com`
+3. Save policy file
+4. Затем продолжать tailscale up ниже
+
+Если не хочешь tags сейчас — оставь без `--advertise-tags`. Tag можно добавить ПОЗЖЕ через admin → Machines → Edit tags. Это safe.
+
+### 3. tailscale up с правильными флагами
+
+📋 PowerShell **admin** (вариант С tagging, после prereq #2):
 
 ```
 tailscale.exe up --hostname=ser10-tha-1 --advertise-tags=tag:cascade-primary --accept-routes=true --accept-dns=false --ssh=false
 ```
 
+📋 PowerShell **admin** (вариант БЕЗ tagging, прямо сейчас работает):
+
+```
+tailscale.exe up --hostname=ser10-tha-1 --accept-routes=true --accept-dns=false --ssh=false
+```
+
 Объяснение:
 - `--hostname=ser10-tha-1` — DNS имя в tailnet (без точек, lowercase, до 63 chars)
-- `--advertise-tags=tag:cascade-primary` — pre-tag. Owner tag (см. ACL `tagOwners`) должен авторизовать ноду как tagged peer
+- `--advertise-tags=tag:cascade-primary` — pre-tag. Owner tag (см. ACL `tagOwners`) должен авторизовать ноду как tagged peer. **Опционально** до tagOwners deploy.
 - `--accept-routes=true` — принимать subnet routes от других нод (AmneziaWG 10.20.0.0/24 через MSK-VPS и т.д.)
 - `--accept-dns=false` — НЕ перехватывать DNS. Если включить — рискуем сломать GoogleDNS / AdGuard разрешение
 - `--ssh=false` — **ОБЯЗАТЕЛЬНО, никогда не включать**, см. [[cascade-tailscale-hard-rules]]

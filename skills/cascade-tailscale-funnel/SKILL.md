@@ -113,3 +113,63 @@ Funnel = публичный URL. Без auth любой может вызват�
 tailscale.exe funnel reset     # снять все Funnel конфиги на ноде
 tailscale.exe funnel status    # должно быть пусто
 ```
+
+## Bearer token rotation (важно — отсутствовало в v1.0)
+
+### Когда менять токен
+
+| Триггер | Срочность |
+|---|---|
+| Telegram message с токеном случайно forward'нут | 🔴 немедленно |
+| Подозрение что токен попал в browser history / clipboard manager / dev tools | 🔴 немедленно |
+| Передача ноды другому человеку / продажа железа | 🔴 перед передачей |
+| Регулярная ротация раз в квартал (best practice) | 🟢 раз в Q |
+| После увольнения сотрудника с доступом (если будет применимо) | 🔴 немедленно |
+| Bug bounty / external pentest начат | 🟡 в начале программы |
+
+### Rotation script (recommended ~/bin/cascade-bearer-rotate)
+
+```bash
+#!/bin/bash
+# ~/bin/cascade-bearer-rotate — generate new Bearer + restart server + tg-notify
+set -e
+NEW=$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')
+BAK=~/.cascade-browser/bearer.txt.bak.$(date +%s)
+[ -f ~/.cascade-browser/bearer.txt ] && mv ~/.cascade-browser/bearer.txt "$BAK"
+echo "$NEW" > ~/.cascade-browser/bearer.txt
+chmod 600 ~/.cascade-browser/bearer.txt
+
+# Restart cascade-browser service (или nohup-форму)
+if systemctl --user --quiet is-active cascade-browser.service 2>/dev/null; then
+    sudo systemctl restart cascade-browser.service
+elif pgrep -f run-server.sh >/dev/null; then
+    pkill -f "python3 src/server.py" || true; sleep 1
+    cd ~/projects/cascade-browser/mcp-server && nohup ./run-server.sh > /tmp/cascade-browser.log 2>&1 &
+fi
+sleep 2
+
+# Test new token
+TOKEN="$NEW"
+code=$(curl -s -o /dev/null -w "%{http_code}" -X POST http://127.0.0.1:8767/mcp \
+       -H "Authorization: Bearer $TOKEN" \
+       -H "Content-Type: application/json" -H "Accept: application/json, text/event-stream" \
+       -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"r","version":"0"}}}')
+[ "$code" = "200" ] || { echo "FATAL: new token not accepted ($code). Rollback: cp $BAK ~/.cascade-browser/bearer.txt"; exit 1; }
+
+# Notify Telegram (только превью токена — full отправляем отдельно по запросу)
+tg-send-text "cascade-browser Bearer ROTATED $(date +%Y-%m-%d_%H:%M): ${NEW:0:6}...${NEW: -4} (len=${#NEW}). Use 'tg-saved-search rotation' для full token if needed."
+echo "Rotation done. Backup: $BAK. New: ${NEW:0:6}...${NEW: -4}"
+```
+
+### Post-rotation tasks
+
+1. Обновить claude.ai → Settings → Connectors → cascade-browser entry: paste new Bearer
+2. Если SER10 + MSI оба активны как backup peers — оба токена нужно менять (они разные)
+3. Backup-файл `bearer.txt.bak.*` удалить через 24-48 часов (когда уверен что новый OK)
+
+### NEVER
+
+- Не commit'ить Bearer в git
+- Не отправлять в Telegram **на чужие** контакты (только Saved Messages)
+- Не показывать в screen-share / public terminal recording
+- Не хранить в `state/*.md` файлах

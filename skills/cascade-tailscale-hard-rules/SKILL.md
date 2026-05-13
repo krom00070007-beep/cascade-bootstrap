@@ -30,6 +30,17 @@ description: Абсолютные правила работы с Tailscale в Ca
 
 **Признак:** если задача или скрипт упоминает один из этих узлов как target → STOP, эскалировать.
 
+### Текущий уровень защиты (на 2026-05-14)
+
+| Слой защиты | Состояние | Сила |
+|---|---|---|
+| Документация (state/current.md, nodes.md) | ✅ есть | 🟡 medium — зависит от внимательности оператора |
+| Script exclusion list (`10-ssh-distribute.sh`) | ✅ есть | 🟢 high — for that one script |
+| **ACL tag-based deny** | ❌ **НЕ задеплоено** | 🔴 — был бы network-уровень defense, но требует [[cascade-tailscale-acl]] rollout |
+| Per-node SSH key absence (наш ключ не на gl-mt6000-1 admin) | ✅ для gl-mt6000-1 | 🟢 high — даже если скрипт случайно target'нет, нет authentication |
+
+**Bottom line:** до ACL rollout — защита **документально-procedural**, достаточно для solo-operator scenario, недостаточно при multi-machine скриптах. См. [[cascade-tailscale-acl]] для plan.
+
 ## 3. Funnel — обязательные требования
 
 - Funnel экспозит сервис на **публичный интернет**. Без auth = catastrophe.

@@ -164,6 +164,110 @@ tailscale.exe status | /bin/grep -v "funnel-ingress"
 2. Перечитать `acls` на работу с новым tag.
 3. **После** проверки доступов — снять старый tag.
 
+## WSL2 loopback issues (cascade-browser TCP:8768)
+
+### Симптомы
+
+- Native Host (Windows) не достучивается до WSL TCP:8768 → bridge handshake fails → cascade-browser broken
+- Logs показывают `TCP connect refused` или `host unreachable` от Native Host
+
+### Причина
+
+- **WSL1** (MSI): loopback shared с Windows → 127.0.0.1:8768 в WSL виден от Windows tools → works out-of-box ✅
+- **WSL2** (SER10 после 15.05): loopback **НЕ shared** по умолчанию. Native Host (Win-side) не видит WSL:8768 ❌
+
+### Решения (по preference)
+
+1. **Mirrored networking** (recommended — Windows 11 22H2+):
+   В `C:\Users\<user>\.wslconfig` добавить:
+   ```ini
+   [wsl2]
+   networkingMode=mirrored
+   ```
+   Затем `wsl --shutdown` из PowerShell + reopen WSL.
+
+2. **netsh portproxy bridge** (legacy fallback):
+   ```
+   netsh interface portproxy add v4tov4 listenport=8768 listenaddress=127.0.0.1 connectport=8768 connectaddress=<WSL2-IP>
+   ```
+   где `<WSL2-IP>` берётся из `wsl hostname -I` в WSL. Дополнительный risk — IP может drift'ить при reboot.
+
+3. **Bind WSL server на 0.0.0.0** (least secure):
+   В `cascade-browser/mcp-server/src/server.py`: `MCP_HOST = '0.0.0.0'`. Не рекомендуется — открывает порт для всей LAN.
+
+### Verify
+
+После любого варианта — из PowerShell:
+
+```powershell
+Test-NetConnection -ComputerName 127.0.0.1 -Port 8768
+```
+
+Должен показать `TcpTestSucceeded : True`.
+
+## ssh-agent socket persistence (post-commit hook не работает после reboot)
+
+### Симптом
+
+После reboot WSL — `git commit` в `cascade-state` → post-commit hook падает:
+```
+[post-commit] running cascade-state-push...
+root@100.70.212.16: Permission denied (publickey,password).
+[post-commit] WARN: cascade-state-push failed (continuing)
+```
+
+### Причина
+
+Hook ищет `/tmp/ssh-agent.sock`. После reboot:
+- `/tmp` очищается → symlink на живой ssh-agent socket пропадает
+- ssh-agent либо не запущен либо на другом пути `/tmp/ssh-XXX/agent.YYY`
+
+### Решение А (WSL2 — рекомендуется): systemd-user service
+
+```ini
+# ~/.config/systemd/user/ssh-agent.service
+[Unit]
+Description=ssh-agent (user)
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/ssh-agent -D -a /tmp/ssh-agent.sock
+Restart=on-failure
+
+[Install]
+WantedBy=default.target
+```
+
+```bash
+systemctl --user enable --now ssh-agent.service
+ssh-add ~/.ssh/id_ed25519       # ввести passphrase один раз
+```
+
+### Решение Б (WSL1 — MSI): `.bashrc` auto-symlink
+
+```bash
+# ~/.bashrc — поднять ssh-agent если не запущен + симлинк
+if ! pgrep -u "$USER" ssh-agent >/dev/null 2>&1; then
+    eval "$(ssh-agent -s -a /tmp/ssh-agent.sock)"
+    ssh-add ~/.ssh/id_ed25519 2>/dev/null || true
+fi
+# Симлинк на дефолтный путь если ещё не валидный
+if [ ! -S /tmp/ssh-agent.sock ]; then
+    SOCK=$(find /tmp -maxdepth 2 -name 'agent.*' -user "$USER" 2>/dev/null | head -1)
+    [ -n "$SOCK" ] && ln -sf "$SOCK" /tmp/ssh-agent.sock
+fi
+export SSH_AUTH_SOCK=/tmp/ssh-agent.sock
+```
+
+### Решение В (любая WSL): `keychain`
+
+```bash
+sudo apt install -y keychain
+echo 'eval $(keychain --eval --quiet --agents ssh id_ed25519)' >> ~/.bashrc
+```
+
+Cache passphrase в life of session. Стандартный pattern для headless boxes.
+
 ## Cascade-специфичные стоп-условия (эскалировать к Stanislav)
 
 | Сигнал | Что не делать самому |

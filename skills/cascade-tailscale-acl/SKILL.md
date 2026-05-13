@@ -1,16 +1,28 @@
 ---
 name: cascade-tailscale-acl
-description: ACL / policy file конфигурация для tailnet Cascade. Tags для классификации (cascade-primary/cascade-server/cascade-exit/cascade-emergency), forbidden nodes (gl-mt6000-1, gl-mt6000-Thai, glkvm, beget-*), грант funnel attribute, exit node policy для bkk-exit/vultr-amsterdam, запрет Tailscale SSH на уровне политики. JSON-шаблоны и команды для применения через admin UI или API.
+description: ACL / policy file конфигурация для tailnet Cascade — это АРХИТЕКТУРНЫЙ ПЛАН, не задеплоенная реальность (на 2026-05-14). Шаблоны tagOwners, acls, nodeAttrs funnel grant, autoApprovers, runbook постепенного rollout (snapshot → tagOwners → tag node → acls). Tags для классификации (cascade-primary/cascade-server/cascade-exit/cascade-emergency), forbidden nodes (gl-mt6000-1, gl-mt6000-Thai, glkvm, beget-*), запрет Tailscale SSH через отсутствие ssh-блока (defense-in-depth + --ssh=false flag).
 ---
 
 # Cascade × Tailscale ACL
 
+⚠️ **СТАТУС НА 2026-05-14: АРХИТЕКТУРНЫЙ ПЛАН, НЕ ЗАДЕПЛОЕНО.**
+
+Реальный tailnet работает на permissive defaults:
+- `tagOwners` содержит только `tag:vpn-bridge` (на `msk-vps-bridge`)
+- MSI, opus-cwr-bkk, bkk-exit и остальные ноды — **untagged**
+- Cascade-специфичные `cascade-*` теги — **не определены**
+- Текущий `acls` блок не проверен (требует admin OAuth)
+
+См. `docs/audits/cascade-tailscale-compliance-2026-05-14.md` (GAP №1) и `docs/audits/cascade-architecture-errors-2026-05-14.md` (Section 1).
+
 ## Зачем
 
-ACL делает три вещи в Cascade:
+ACL даст три вещи в Cascade (когда задеплоим):
 1. **Сегментация** — разные классы нод не получают универсальный доступ (PRIMARY → exit OK, exit → PRIMARY NO)
 2. **Funnel grant** — node attribute `funnel` для нод что публикуют MCP
 3. **Защита forbidden nodes** — gl-mt6000-Thai / glkvm не должны принимать чужой трафик из tailnet без явного разрешения
+
+**До deploy:** защита forbidden nodes только **документальная** (упоминание в `state/current.md`, `nodes.md`, exclusion list в `10-ssh-distribute.sh`). Достаточно для текущего solo-operator scenario, но недостаточно при росте команды или multi-machine скриптов.
 
 ## Открыть ACL editor
 
@@ -153,3 +165,129 @@ curl -sS -H "Authorization: Bearer $TS_TOKEN" \
 - ACL save в admin показывает синтаксическую ошибку — НЕ примет, твоя предыдущая версия остаётся активной (safe)
 - После tag rename — нода может временно потерять доступы. Сначала добавить новый tag, потом снять старый.
 - Изменения в `funnel` attribute срабатывают за ~10 секунд, не моментально.
+
+## Постепенный rollout (low-risk, рекомендуется)
+
+⚠️ **Все этапы — отдельные сессии**, не делать в один заход с другими high-risk операциями (Phase 3 deploy, MIG-001).
+
+### Stage 0 — Snapshot текущего policy (always first)
+
+1. admin.tailscale.com → Access controls → Edit (Open JSON editor)
+2. Скопировать всю текущую `policy.hujson` в clipboard
+3. Сохранить локально: `~/.cache/tailscale-acl-backup-$(date +%Y%m%d-%H%M%S).hujson`
+4. Запушить через `tg-send-file` копию в Telegram Saved для cross-device backup
+
+### Stage 1 — Добавить tagOwners (zero-impact)
+
+Только определения tagOwners, без acls правил. Это zero-impact: peers продолжают работать как раньше.
+
+В admin → ACL editor → patch:
+
+```json
+{
+  "tagOwners": {
+    "tag:cascade-primary":   ["krom00070007@gmail.com"],
+    "tag:cascade-backup":    ["krom00070007@gmail.com"],
+    "tag:cascade-server":    ["krom00070007@gmail.com"],
+    "tag:cascade-exit":      ["krom00070007@gmail.com"],
+    "tag:cascade-emergency": ["krom00070007@gmail.com"],
+    "tag:cascade-mobile":    ["krom00070007@gmail.com"],
+    "tag:vpn-bridge":        ["krom00070007@gmail.com"]   // существующий, не трогаем
+  },
+  // existing acls, groups, hosts остаются как были
+}
+```
+
+Save → ничего не меняется в connectivity. Tags доступны для assignment.
+
+### Stage 2 — Tag двух pilot-нод (MSI + opus)
+
+В admin → Machines → desktop-4sl95n4 (MSI) → Edit tags → `tag:cascade-backup`. Save.
+В admin → Machines → opus-cwr-bkk → Edit tags → `tag:cascade-server`. Save.
+
+Verify через `tailscale.exe debug prefs` на MSI: `AdvertiseTags` должен показать `[tag:cascade-backup]`.
+
+Communications должны работать как раньше (`tailscale.exe ping opus-cwr-bkk` → success), потому что acls ещё не ограничен.
+
+### Stage 3 — Tag остальных core нод
+
+После 24 часов наблюдения Stage 2 без проблем:
+- bkk-exit → `tag:cascade-exit`
+- vultr-amsterdam → `tag:cascade-exit`
+- stockholm → `tag:cascade-exit`
+- msk-vps-bridge → `tag:cascade-exit` + сохранить `tag:vpn-bridge`
+- timeweb-* → `tag:cascade-server`
+- gl-mt6000-1 → `tag:cascade-emergency`
+- gl-mt6000 (Thai) → `tag:cascade-emergency`
+- glkvm → `tag:cascade-emergency`
+- s25-ultra-stanislav-3 → `tag:cascade-mobile`
+- iphone-* → `tag:cascade-mobile`
+
+Beget container ноды (refuse SSH) — без tag, либо `tag:cascade-emergency` (если хочется визуально маркировать).
+
+### Stage 4 — Применить acls **в test mode сначала**
+
+Tailscale поддерживает `tailscale.exe acl test` (если включён). Перед save:
+
+```bash
+# Сохранить candidate policy локально
+cat > /tmp/candidate-acls.hujson <<'EOF'
+{
+  // ... весь policy file с новым acls блоком ...
+}
+EOF
+
+# Test против известных peer pairs (run на любой ноде)
+# Не уверен что это поддерживается на Free plan — проверить
+```
+
+Если `acl test` недоступен — использовать **strategy: open до явного deny**. Первая итерация acls:
+
+```json
+"acls": [
+  /* Универсальный allow для всех владельцев, потом сужаем */
+  { "action": "accept", "src": ["autogroup:owner"], "dst": ["*:*"] }
+]
+```
+
+Это equivalent permissive-by-default — equivalent текущему состоянию, но в явной форме. Save и verify все работает.
+
+### Stage 5 — Усиление acls по одному правилу
+
+После Stage 4 → постепенно дробить:
+
+1. Заменить `autogroup:owner` на конкретные tag-sources (`tag:cascade-primary, tag:cascade-backup, tag:cascade-mobile`)
+2. После 24 часов — заменить `dst: ["*:*"]` на `dst: ["tag:cascade-server:*", "tag:cascade-exit:*"]`
+3. После следующих 24 часов — удалить открытый универсальный rule
+4. Forbidden nodes (`tag:cascade-emergency`) **не появляются** в `dst` ни одного accept-rule → default deny
+
+### Stage 6 — Verify hard-rules
+
+После полного rollout:
+
+- `tailscale.exe ssh tag:cascade-emergency` → должно fail (нет ssh блока, deny)
+- Любой peer → `tag:cascade-emergency` connect → должно fail
+- `tag:cascade-mobile` (телефон) → `tag:cascade-server` :443 (Funnel) → success
+- `tag:cascade-mobile` → `tag:cascade-exit` (exit node use) → success
+
+### Stop conditions / rollback
+
+- На любом stage если peer теряет доступ непредвиденно → **rollback из Stage 0 snapshot** немедленно (admin → ACL → paste старую policy.hujson → Save).
+- Не оставлять deny-rules pending — каждый save должен быть **complete и valid**.
+- Если admin показывает syntax error — он не save'нет (safe), но logical errors save'тся (Stage 5 dangerous part).
+
+## Текущий тэг на нодах (на 2026-05-14)
+
+| Node | Live tags | Должен быть после rollout |
+|---|---|---|
+| MSI | (none) | `tag:cascade-backup` (после 15.05; PRIMARY до этого) |
+| SER10 Pattaya-1 | (offline) | `tag:cascade-primary` (после 15.05) |
+| opus-cwr-bkk | (none) | `tag:cascade-server` |
+| bkk-exit | (none) | `tag:cascade-exit` |
+| vultr-amsterdam | (none) | `tag:cascade-exit` |
+| stockholm | (none) | `tag:cascade-exit` |
+| msk-vps-bridge | `tag:vpn-bridge` | `tag:vpn-bridge` + `tag:cascade-exit` |
+| s25-ultra-stanislav-3 | (none) | `tag:cascade-mobile` |
+| gl-mt6000-1 | (none) | `tag:cascade-emergency` |
+| gl-mt6000 (Thai) | (none) | `tag:cascade-emergency` |
+| glkvm | (none) | `tag:cascade-emergency` |
