@@ -1,0 +1,81 @@
+# cascade-bastion-setup configuration
+# Copy to cascade-bastion-setup.conf, edit, chmod 600.
+
+# ============================================================
+# Identity
+# ============================================================
+
+HOSTNAME="cascade-bastion-krom7"
+ADMIN_USER="usersstas"
+TZ="Asia/Bangkok"
+
+# ============================================================
+# Domain (for Let's Encrypt cert)
+# ============================================================
+
+# Public domain pointing to этому VDS via A record
+DOMAIN="krom7.ru"
+
+# Email for Let's Encrypt notifications
+LETSENCRYPT_EMAIL="krom00070007@gmail.com"
+
+# Subdomain prefix для Guacamole (если хочешь например guac.krom7.ru)
+# Empty = krom7.ru root
+GUACAMOLE_SUBDOMAIN=""
+
+# ============================================================
+# Tailscale
+# ============================================================
+
+TAILSCALE_AUTHKEY=""
+TAILSCALE_TAGS="tag:cascade-bastion"
+
+# Use bkk-exit as upstream exit-node (chained traffic per pattern Stanislav described)
+USE_EXIT_NODE_HOSTNAME="bkk-exit"
+
+# ============================================================
+# Beelink target (RDP/VNC connection через tailnet)
+# ============================================================
+
+# Hostname Beelink в tailnet (либо IP). Beelink должен иметь Tailscale установлен.
+# Если Beelink не в tailnet — нужно MSI как subnet router (см. INSTALL.md).
+BEELINK_TAILSCALE_HOST="beelink-ser10"
+BEELINK_TAILSCALE_IP=""  # если MagicDNS не работает — захардкодить tailnet IP
+
+# RDP / VNC настройки для Beelink (Windows = RDP)
+BEELINK_PROTOCOL="rdp"          # rdp | vnc | ssh
+BEELINK_PORT="3389"             # default 3389 RDP, 5900 VNC, 22 SSH
+BEELINK_USERNAME="krom0"        # Windows login на Beelink
+# BEELINK_PASSWORD = не записываем в config! Guacamole спросит при connect
+
+# ============================================================
+# Guacamole
+# ============================================================
+
+# Initial admin password для Guacamole web (default 'guacadmin')
+# ⚠️ Change ASAP после first login
+GUACAMOLE_ADMIN_USER="guacadmin"
+GUACAMOLE_ADMIN_PASS="guacadmin"
+
+# Postgres password (внутренняя — Guacamole DB only)
+POSTGRES_PASSWORD="changeme-postgres-strong-pass"
+
+# ============================================================
+# Performance
+# ============================================================
+
+ENABLE_TCP_BBR=true
+SWAP_SIZE_MB=2048
+
+# ============================================================
+# Optional
+# ============================================================
+
+# Send daily Telegram report (через cascade-local-doctor pattern)
+ENABLE_LOCAL_DOCTOR=true
+LOCAL_DOCTOR_HOUR=12
+TELEGRAM_BOT_TOKEN=""
+TELEGRAM_CHAT_ID=""
+
+# Admin SSH key
+ADMIN_SSH_PUBKEY_SOURCE="github:krom00070007-beep"
