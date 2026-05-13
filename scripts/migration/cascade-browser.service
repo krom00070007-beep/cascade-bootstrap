@@ -1,0 +1,24 @@
+[Unit]
+Description=Cascade Browser MCP Server (cascade-browser/mcp-server/run-server.sh)
+Documentation=https://github.com/krom00070007-beep/cascade-browser
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=usersstas
+Group=usersstas
+WorkingDirectory=/home/usersstas/projects/cascade-browser/mcp-server
+ExecStart=/home/usersstas/projects/cascade-browser/mcp-server/run-server.sh
+Restart=on-failure
+RestartSec=10
+StandardOutput=append:/var/log/cascade-browser.log
+StandardError=append:/var/log/cascade-browser.log
+
+# Hardening (cautious — keep minimal until proven stable):
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+
+[Install]
+WantedBy=multi-user.target
