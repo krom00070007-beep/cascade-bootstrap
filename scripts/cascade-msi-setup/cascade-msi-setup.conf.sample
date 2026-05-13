@@ -1,0 +1,92 @@
+# cascade-msi-setup configuration sample
+# Copy this to cascade-msi-setup.conf, edit, chmod 600.
+#
+# Used by 00-bootstrap-msi.ps1 and downstream WSL scripts.
+
+# ============================================================
+# Identity
+# ============================================================
+
+# Windows hostname (отображается в tailnet)
+MSI_HOSTNAME="desktop-4sl95n4"
+
+# WSL Linux user (внутри WSL Ubuntu)
+WSL_USER="usersstas"
+
+# Windows account name (root, krom0, etc.)
+WIN_USER="krom0"
+
+# Timezone (Win + WSL должны совпадать)
+TZ="Asia/Bangkok"
+
+# ============================================================
+# Tailscale
+# ============================================================
+
+# Auth key из admin.tailscale.com → Keys (reusable + pre-approved + tag:cascade-backup)
+TAILSCALE_AUTHKEY=""
+
+# Tag для MSI (после 15.05 — BACKUP; до миграции на SER10 — PRIMARY)
+TAILSCALE_TAGS="tag:cascade-backup"
+
+# Funnel hostname (это hostname что admin создаст автоматически)
+# Формат: <hostname>.<tailnet-name>.ts.net
+# Например: desktop-4sl95n4.tail80c5d4.ts.net
+TAILSCALE_FUNNEL_HOSTNAME="desktop-4sl95n4.tail80c5d4.ts.net"
+
+# ============================================================
+# cascade-browser MCP
+# ============================================================
+
+# Port для MCP HTTP server (default 8767)
+MCP_PORT=8767
+
+# Port для TCP bridge listener (default 8768)
+BRIDGE_PORT=8768
+
+# Bearer token — будет автоматически сгенерирован (chmod 600) если не задан
+# Не commit'ить если задаёшь вручную
+CASCADE_BEARER_TOKEN=""
+
+# ============================================================
+# cascade-doctor
+# ============================================================
+
+# Enable Win Task Scheduler ежедневный run
+ENABLE_CASCADE_DOCTOR=true
+
+# Час запуска (24h, Bangkok TZ)
+DOCTOR_RUN_HOUR=12
+
+# READ-ONLY mode (без auto-fix) — рекомендуется на 7 дней после deploy
+DOCTOR_READ_ONLY=true
+
+# ============================================================
+# Git / GitHub
+# ============================================================
+
+# Git user.email + user.name для commits внутри WSL
+GIT_USER_EMAIL="krom00070007@gmail.com"
+GIT_USER_NAME="krom00070007-beep"
+
+# ============================================================
+# Performance (для WSL2 only — WSL1 не использует .wslconfig sysctl)
+# ============================================================
+
+# .wslconfig settings (если WSL2 — игнорируется в WSL1)
+WSLCONFIG_MEMORY="8GB"
+WSLCONFIG_PROCESSORS="6"
+WSLCONFIG_SWAP="2GB"
+WSLCONFIG_NETWORKING_MODE="mirrored"
+
+# ============================================================
+# SSH key (для admin доступа к peers через WSL)
+# ============================================================
+
+# Откуда взять SSH ключ:
+#   "generate" — генерировать новый ed25519
+#   "import:<path>" — import из existing private key
+SSH_KEY_STRATEGY="generate"
+
+# Comment для сгенерированного ключа
+SSH_KEY_COMMENT="cowork-msi-wsl2-$(date +%Y%m%d)"
