@@ -1,0 +1,111 @@
+# cascade-server-setup configuration
+#
+# Copy this file to cascade-server-setup.conf and fill in the values.
+# Most settings have sensible defaults; only TAILSCALE_AUTHKEY и TELEGRAM_*
+# обычно требуют создания (см. README).
+
+# ============================================================
+# Generic
+# ============================================================
+
+# Hostname в tailnet (lowercase, без точек, до 63 chars)
+HOSTNAME="ser-new-thailand-1"
+
+# Admin user (создаст с sudo)
+ADMIN_USER="usersstas"
+
+# Timezone
+TZ="Asia/Bangkok"
+
+# Locale
+LOCALE="en_US.UTF-8"
+
+# ============================================================
+# Tailscale
+# ============================================================
+
+# Pre-auth key из admin.tailscale.com → Settings → Keys → Generate.
+# Лучше Reusable + Ephemeral=false + Tags pre-assigned.
+# Если пустой — упадёт на interactive OAuth.
+TAILSCALE_AUTHKEY=""
+
+# Tags (через запятую, обязательно начинаются с tag:).
+# Перед применением убедиться что тэги в tagOwners в admin policy file.
+TAILSCALE_TAGS="tag:cascade-exit"
+
+# Advertise exit-node (этот сервер будет offer outbound exit для других peers)
+TAILSCALE_ADVERTISE_EXIT_NODE=true
+
+# Subnet routes (если этот сервер должен route'ить локальные subnets в tailnet).
+# Формат CIDR через запятую, или "" если не нужно.
+TAILSCALE_ADVERTISE_ROUTES=""
+
+# ============================================================
+# Chained exit-node (этот сервер сам идёт outbound через ДРУГОЙ peer)
+# ============================================================
+
+# Hostname другого peer в tailnet, чей exit-node будет использован.
+# Пусто = не использовать chain (direct internet).
+# Пример: "vultr-amsterdam" — Stanislav-trusted NL exit
+USE_EXIT_NODE_HOSTNAME="vultr-amsterdam"
+
+# Также accept LAN access через выбранную exit-node (по дефолту нет).
+USE_EXIT_NODE_LAN_ACCESS=false
+
+# ============================================================
+# SSH / admin key distribution
+# ============================================================
+
+# Откуда тянуть admin pubkey'и (formatted as authorized_keys).
+# Опции:
+#   - "github:krom00070007-beep" — из github.com/krom00070007-beep.keys (public)
+#   - "file:/path/to/authorized_keys" — local file (для копи через scp заранее)
+#   - "" — пропустить (юзер вручную через ssh-copy-id потом)
+ADMIN_SSH_PUBKEY_SOURCE="github:krom00070007-beep"
+
+# Disable password auth + permitrootlogin (после установки ключа)
+HARDEN_SSHD=true
+
+# ============================================================
+# Performance tuning
+# ============================================================
+
+# TCP BBR congestion control (Linux 4.9+ — supported on Ubuntu 24.04 stock)
+ENABLE_TCP_BBR=true
+
+# Большие TCP buffers (для high-bandwidth exit-node)
+ENABLE_LARGE_TCP_BUFFERS=true
+
+# Swap size (recommended 1-2GB для VDS с 1-4GB RAM; 0 = no swap)
+SWAP_SIZE_MB=1024
+
+# ============================================================
+# Local doctor (self-monitoring)
+# ============================================================
+
+# Запускать локальный health-check ежедневно через cron
+ENABLE_LOCAL_DOCTOR=true
+
+# Час запуска (24-hour format, local time)
+LOCAL_DOCTOR_HOUR=12
+
+# ============================================================
+# Telegram (для self-reports от local-doctor)
+# ============================================================
+
+# Bot token из @BotFather (или существующий cascade bot).
+# Пусто = отчёты только в файл /var/log/cascade-local-doctor.log
+TELEGRAM_BOT_TOKEN=""
+
+# Chat ID куда слать (обычно Stanislav's "Saved Messages" = bot user id, или group chat).
+# Можно получить через @userinfobot или @get_id_bot.
+TELEGRAM_CHAT_ID=""
+
+# Только critical alerts (нет daily heartbeat)
+TELEGRAM_QUIET=false
+
+# ============================================================
+# unattended-upgrades (security only)
+# ============================================================
+
+ENABLE_UNATTENDED_UPGRADES=true
