@@ -22,6 +22,18 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 UNIT_SRC="$SCRIPT_DIR/cascade-browser.service"
 UNIT_DST=/etc/systemd/system/cascade-browser.service
 
+
+# --- 0. WSL2 mirrored networking check (added 14.05) ---
+WSLCFG="/mnt/c/Users/krom0/.wslconfig"
+if ! grep -q "networkingMode=mirrored" "$WSLCFG" 2>/dev/null; then
+    echo "WARN: $WSLCFG missing networkingMode=mirrored."
+    echo "Append manually: [wsl2] / networkingMode=mirrored"
+    echo "Then wsl --shutdown from PowerShell, then re-run this script."
+    exit 1
+else
+    echo "[0/4] WSL2 mirrored networking: OK"
+fi
+
 # --- 1. systemd-in-WSL check ---
 if ! grep -q '^systemd=true' /etc/wsl.conf 2>/dev/null; then
     echo "WARN: /etc/wsl.conf does not have systemd=true."
